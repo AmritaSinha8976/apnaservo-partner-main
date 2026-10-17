@@ -1,0 +1,12 @@
+<resources>
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">@color/partner_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:colorAccent">@color/partner_brand</item>
+    </style>
+
+    <style name="AppLaunchTheme" parent="AppTheme">
+        <item name="android:windowBackground">@color/apnaservo_launcher_background</item>
+    </style>
+</resources>

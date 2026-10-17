@@ -1,0 +1,27 @@
+# Android Studio / Gradle generated files
+.gradle/
+.idea/
+build/
+app/build/
+*.iml
+local.properties
+
+# Release packages and signing material
+*.apk
+*.aab
+*.apks
+*.jks
+*.keystore
+upload-keystore.properties
+
+# Local diagnostics and temporary files
+*.log
+*.hprof
+hs_err_pid*.log
+replay_pid*.log
+.codex-*/
+FIREBASE_RELEASE_*.txt
+
+# OS files
+.DS_Store
+Thumbs.db

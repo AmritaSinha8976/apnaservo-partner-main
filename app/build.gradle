@@ -1,0 +1,147 @@
+plugins {
+    id "com.android.application"
+    id "com.google.gms.google-services"
+    id "com.google.firebase.crashlytics"
+}
+
+def releaseProperties = new Properties()
+def releasePropertiesFile = rootProject.file("upload-keystore.properties")
+if (releasePropertiesFile.exists()) {
+    releasePropertiesFile.withInputStream { releaseProperties.load(it) }
+}
+def hasReleaseSigning = ["storeFile", "storePassword", "keyAlias", "keyPassword"].every { key ->
+    releaseProperties.getProperty(key)?.trim()
+}
+def configuredApiBaseUrl = (project.findProperty("APNA_SERVO_API_BASE_URL") ?: "https://apnaservobk-98gz.onrender.com/api").toString()
+def configuredSocketUrl = (project.findProperty("APNA_SERVO_SOCKET_URL") ?: "https://apnaservobk-98gz.onrender.com").toString()
+def configuredApiBackupUrl = (project.findProperty("APNA_SERVO_API_BACKUP_URL") ?: "https://apnaservobk-netx.onrender.com/api").toString()
+def configuredSocketBackupUrl = (project.findProperty("APNA_SERVO_SOCKET_BACKUP_URL") ?: "https://apnaservobk-netx.onrender.com").toString()
+def isSafeProductionUrl = { value ->
+    def normalized = value.trim().toLowerCase()
+    normalized.startsWith("https://") &&
+            !["localhost", "127.0.0.1", "10.0.2.2", "staging", ".local"].any { forbidden -> normalized.contains(forbidden) }
+}
+
+android {
+    namespace = "com.apnaservo.partner"
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = "com.apnaservo.partner"
+        // Google Play Automatic Protection requires API level 24 or newer.
+        minSdk = 24
+        targetSdk = 36
+        versionCode = (project.findProperty("VERSION_CODE") ?: "20").toString().toInteger()
+        versionName = (project.findProperty("VERSION_NAME") ?: "1.0.20").toString()
+        buildConfigField "String", "APNA_SERVO_API_BASE_URL", "\"${configuredApiBaseUrl}\""
+        buildConfigField "String", "APNA_SERVO_SOCKET_URL", "\"${configuredSocketUrl}\""
+        buildConfigField "String", "APNA_SERVO_API_BACKUP_URL", "\"${configuredApiBackupUrl}\""
+        buildConfigField "String", "APNA_SERVO_SOCKET_BACKUP_URL", "\"${configuredSocketBackupUrl}\""
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseProperties.getProperty("storeFile"))
+                storePassword releaseProperties.getProperty("storePassword")
+                keyAlias releaseProperties.getProperty("keyAlias")
+                keyPassword releaseProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // Keep the signed Play bundle reliable on memory-constrained build machines.
+            // This changes only packaging/obfuscation, not app behavior or security rules.
+            minifyEnabled = true
+            shrinkResources = true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation platform("com.google.firebase:firebase-bom:34.16.0")
+    implementation "com.google.firebase:firebase-analytics"
+    implementation "com.google.firebase:firebase-crashlytics"
+    implementation "com.google.firebase:firebase-auth"
+    implementation "com.google.firebase:firebase-firestore"
+    implementation "com.google.firebase:firebase-database"
+    implementation "com.google.firebase:firebase-messaging"
+    implementation "com.google.firebase:firebase-storage"
+    implementation "com.google.android.gms:play-services-auth:21.6.0"
+    implementation "com.google.android.gms:play-services-auth-api-phone:18.1.0"
+    implementation "com.google.android.gms:play-services-location:21.3.0"
+    implementation "androidx.core:core:1.17.0"
+    implementation "androidx.security:security-crypto:1.1.0"
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    implementation "com.github.bumptech.glide:glide:4.16.0"
+    implementation("io.socket:socket.io-client:2.1.2") {
+        // Socket.IO 2.1.2 pulls org.json:json:20090211, which shadows Android's
+        // framework org.json classes and crashes Firebase Database's runloop.
+        exclude group: "org.json", module: "json"
+    }
+    implementation "com.google.zxing:core:3.5.4"
+    implementation "com.razorpay:checkout:1.6.40"
+    testImplementation "junit:junit:4.13.2"
+}
+
+// No third-party org.json implementation may be packaged in the Android app.
+// Android supplies these classes; bundling another version creates binary conflicts.
+configurations.configureEach {
+    exclude group: "org.json", module: "json"
+}
+
+def verifyPlayReleaseTask = tasks.register("verifyPlayRelease") {
+    group = "verification"
+    description = "Checks the non-secret configuration required for a Play upload bundle."
+    doLast {
+        def missing = []
+        if (!hasReleaseSigning) missing << "upload-keystore.properties with storeFile, storePassword, keyAlias and keyPassword"
+        if (android.defaultConfig.versionCode <= 0) missing << "a positive VERSION_CODE"
+        if (!isSafeProductionUrl(configuredApiBaseUrl)) missing << "a HTTPS production APNA_SERVO_API_BASE_URL (localhost, emulator, staging and .local endpoints are forbidden)"
+        if (!isSafeProductionUrl(configuredSocketUrl)) missing << "a HTTPS production APNA_SERVO_SOCKET_URL (localhost, emulator, staging and .local endpoints are forbidden)"
+        if (!isSafeProductionUrl(configuredApiBackupUrl)) missing << "a HTTPS production APNA_SERVO_API_BACKUP_URL (localhost, emulator, staging and .local endpoints are forbidden)"
+        if (!isSafeProductionUrl(configuredSocketBackupUrl)) missing << "a HTTPS production APNA_SERVO_SOCKET_BACKUP_URL (localhost, emulator, staging and .local endpoints are forbidden)"
+        if (!missing.isEmpty()) throw new GradleException("Play release is blocked: " + missing.join(", "))
+    }
+}
+
+def verifyNoBundledOrgJsonTask = tasks.register("verifyNoBundledOrgJson") {
+    group = "verification"
+    description = "Fails when a third-party org.json implementation can enter the release runtime."
+    doLast {
+        def offenders = configurations.releaseRuntimeClasspath.resolvedConfiguration.resolvedArtifacts.findAll { artifact ->
+            artifact.moduleVersion.id.group == "org.json" && artifact.name == "json"
+        }
+        if (!offenders.isEmpty()) {
+            throw new GradleException("Release is blocked: incompatible org.json dependency found: " +
+                    offenders.collect { it.moduleVersion.id }.join(", "))
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name == "bundleRelease") {
+        dependsOn(verifyPlayReleaseTask, verifyNoBundledOrgJsonTask)
+    }
+}
+
+tasks.register("bundlePlayRelease") {
+    group = "build"
+    description = "Builds a signed, Play-upload-ready Android App Bundle after verification."
+    dependsOn "bundleRelease"
+}

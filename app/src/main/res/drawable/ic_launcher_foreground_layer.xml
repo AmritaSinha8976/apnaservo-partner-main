@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Full square artwork constrained to Android's 66dp adaptive safe zone. -->
+    <item
+        android:width="66dp"
+        android:height="66dp"
+        android:gravity="center">
+        <bitmap
+            android:antialias="true"
+            android:filter="true"
+            android:gravity="fill"
+            android:src="@drawable/apnaservo_launcher_foreground" />
+    </item>
+</layer-list>

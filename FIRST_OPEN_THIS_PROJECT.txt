@@ -1,0 +1,14 @@
+IMPORTANT
+
+Do not open MainActivity.java directly.
+Do not open the parent "New project" folder.
+
+Correct folder to open in Android Studio:
+
+E:\New project\.vscode\ApnaServo\partner-app
+
+Easiest way:
+Double-click open-project-folder-only.bat
+
+Then run the app module.
+The app package is com.apnaservo.partner.
